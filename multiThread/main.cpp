@@ -75,7 +75,7 @@ public:
 	Coarse_grained_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
 	~Coarse_grained_synchronization_LIST() { Clear(); }
 
-	virtual void myTypePrint() {	cout << typeid(*this).name() << " == 성긴 동기화\n\n"; }
+	virtual void myTypePrint() { printf(" %s == 성긴 동기화\n\n", typeid(*this).name()); }
 
 	virtual bool Add(int x) {
 		NODE *prev, *curr;
@@ -182,7 +182,7 @@ public:
 		Clear();
 	}
 
-	virtual void myTypePrint() { cout << typeid(*this).name() << " == 세밀한 동기화\n\n"; }
+	virtual void myTypePrint() { printf(" %s == 세밀한 동기화\n\n", typeid(*this).name()); }
 
 	virtual bool Add(int x) {
 		NODE *prev, *curr;
@@ -310,7 +310,7 @@ private:
 
 
 int main() {
-	_wsetlocale(LC_ALL, L"korean");
+	setlocale(LC_ALL, "korean");
 	vector<Virtual_Class *> List_Classes;
 
 	List_Classes.emplace_back(new Coarse_grained_synchronization_LIST());
