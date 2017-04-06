@@ -173,7 +173,6 @@ private:
 
 class Fine_grained_synchronization_LIST : public Virtual_Class {
 	NODE head, tail;
-	mutex m_lock;
 public:
 	Fine_grained_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
 	~Fine_grained_synchronization_LIST() {
@@ -288,17 +287,123 @@ private:
 	}
 };
 
+class Optimistic_synchronization_LIST : public Virtual_Class {
+	// 검색시 락은 오버헤드가 너무 크니, 일단 검색후 락. 제대로 했는지 확인후
+	// 잘못되었으면, 처음부터 다시 -> 낙천적 동기화의 개념 (시도한 위치가 제대로 잡힐 때 까지)
+	// 고민1. 이동중에 갑자기 누가 삭제해버리면 어떻게 될것인가? delete 된 노드를 가르킨다? ㅁㅊ
+	// 제대로 된 포인터라는 보장이 없기 때문에 잘 처리해줘야 한다.
+	// 그렇기 때문에, 빼긴 하는데 DELETE 를 하지 않고, 다른 곳에 빼둔다. ( 포인터는 그대로니 안정성 )
+	
+	// 만약 실패해서, 두번째 왔을때 다시 올 수 있는지 확인 한다.
+	// 첫번째 검색은 아무런 락 없이 검색하지만, 
+	NODE head, tail;
+	vector<NODE *> free_list;
+public:
+	Optimistic_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
+	~Optimistic_synchronization_LIST() { Clear(); }
+
+	virtual void myTypePrint() { printf(" %s == 게으른 동기화\n\n", typeid(*this).name()); }
+
+	virtual bool Add(int x) {
+		NODE *prev, *curr;
+
+		prev = Search_key(x);
+		curr = prev->next;
+
+		if (x == curr->key) {
+			prev->m_L.unlock();
+			curr->m_L.unlock();
+			return false;
+		}
+		else {
+			NODE *node = new NODE{ x };
+			node->next = curr;
+			prev->next = node;
+			prev->m_L.unlock();
+			curr->m_L.unlock();
+			return true;
+		}
+	};
+
+	virtual bool Remove(int x) {
+		NODE *prev, *curr;
+
+		prev = Search_key(x);
+		curr = prev->next;
+		if (x != curr->key) {
+			prev->m_L.unlock();
+			curr->m_L.unlock();
+			return false;
+		}
+		else {
+			curr->next->m_L.lock();
+			prev->next = curr->next;
+			curr->next->m_L.unlock();
+			curr->m_L.unlock();
+			delete curr;
+			prev->m_L.unlock();
+			return true;
+		}
+	};
+
+	// 해당 key 값이 있습니까?
+	virtual bool Contains(int x) {
+		NODE *prev, *curr;
+
+		prev = Search_key(x);
+		curr = prev->next;
+
+		if (x != curr->key) {
+			prev->m_L.unlock();
+			curr->m_L.unlock();
+			return false;
+		}
+		else {
+			prev->m_L.unlock();
+			curr->m_L.unlock();
+			return true;
+		}
+	};
+
+	// 내부 노드 전부 해제
+	virtual void Clear() {
+		NODE *ptr;
+		while (head.next != &tail)
+		{
+			ptr = head.next;
+			head.next = ptr->next;
+			delete ptr;
+		}
+	}
+
+	// 값이 제대로 들어갔나 확인하기 위한 기본 앞쪽 20개 체크
+	virtual void Print20() {
+		NODE *ptr = head.next;
+		for (int i = 0; i < 20; ++i) {
+			if (&tail == ptr) { break; }
+			cout << ptr->key << " ";
+			ptr = ptr->next;
+		}
+		cout << "\n\n";
+	}
+private:
+	NODE* Search_key(int key) {
+		NODE *prev, *curr;
+
+		prev = &head;
+		curr = head.next;
+
+		while (curr->key < key) {
+			prev = curr;
+			curr = curr->next;
+		}
+		return prev;
+	}
+};
+
 
 
 // Coarse_grained_synchronization_LIST c_set; // 성긴 동기화
-/// no Lock
-// 1 Thread 1454 ms
-/// mutex Lock on
-// 1 - 2065
-// 2 - 2293
-// 4 - 2776
-// 8 - 2759
-// 16 - 2786
 
 // Fine_grained_synchronization_LIST f_set; // 세밀한 동기화
 
