@@ -39,6 +39,13 @@ public:
 	void UnLock() { m_L.unlock(); }
 };
 
+class Free_List {
+	atomic<int> index = { 0 };
+public:
+	Free_List() {};
+	~Free_List() {};
+};
+
 class Virtual_Class {
 public:
 	Virtual_Class() {};
@@ -309,6 +316,15 @@ public:
 
 		prev = Search_key(x);
 		curr = prev->next;
+
+		prev->m_L.lock();
+		curr->m_L.lock();
+
+		if (false == validate(prev, curr)) {
+			curr->m_L.unlock();
+			prev->m_L.unlock();
+			continue;
+		}
 
 		if (x == curr->key) {
 			prev->m_L.unlock();
