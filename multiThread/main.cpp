@@ -26,24 +26,17 @@ private:
 };
 
 class NODE {
+	mutex m_L;
 public:
 	int key;
 	NODE *next;
-	mutex m_L;
 
 	NODE() { next = nullptr; };
 	NODE(int x) : key(x) { next = nullptr; };
 	~NODE() {};
 
 	void Lock() { m_L.lock(); }
-	void UnLock() { m_L.unlock(); }
-};
-
-class Free_List {
-	atomic<int> index = { 0 };
-public:
-	Free_List() {};
-	~Free_List() {};
+	void Unlock() { m_L.unlock(); }
 };
 
 class Virtual_Class {
@@ -197,16 +190,16 @@ public:
 		curr = prev->next;
 
 		if (x == curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
+			prev->Unlock();
+			curr->Unlock();
 			return false;
 		}
 		else {
 			NODE *node = new NODE{ x };
 			node->next = curr;
 			prev->next = node;
-			prev->m_L.unlock();
-			curr->m_L.unlock();
+			prev->Unlock();
+			curr->Unlock();
 			return true;
 		}
 	};
@@ -217,17 +210,15 @@ public:
 		prev = Search_key(x);
 		curr = prev->next;
 		if (x != curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
+			prev->Unlock();
+			curr->Unlock();
 			return false;
 		}
 		else {
-			curr->next->m_L.lock();
 			prev->next = curr->next;
-			curr->next->m_L.unlock();
-			curr->m_L.unlock();
+			curr->Unlock();
 			delete curr;
-			prev->m_L.unlock();
+			prev->Unlock();
 			return true;
 		}
 	};
@@ -240,13 +231,13 @@ public:
 		curr = prev->next;
 
 		if (x != curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
+			prev->Unlock();
+			curr->Unlock();
 			return false;
 		}
 		else {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
+			prev->Unlock();
+			curr->Unlock();
 			return true;
 		}
 	};
@@ -276,18 +267,18 @@ private:
 	NODE* Search_key(int key) {
 		NODE *prev, *curr;
 
-		head.m_L.lock();
+		head.Lock();
 		prev = &head;
 
-		head.next->m_L.lock();
+		head.next->Lock();
 		curr = head.next;
 
 		while (curr->key < key) {
 
-			prev->m_L.unlock();
+			prev->Unlock();
 			prev = curr;
 
-			curr->next->m_L.lock();
+			curr->next->Lock();
 			curr = curr->next;
 		}
 		return prev;
@@ -302,63 +293,79 @@ class Optimistic_synchronization_LIST : public Virtual_Class {
 	// 그렇기 때문에, 빼긴 하는데 DELETE 를 하지 않고, 다른 곳에 빼둔다. ( 포인터는 그대로니 안정성 )
 	
 	// 만약 실패해서, 두번째 왔을때 다시 올 수 있는지 확인 한다.
-	// 첫번째 검색은 아무런 락 없이 검색하지만, 
+	// 첫번째 검색은 아무런 락 없이 검색하지만, 다음은 현재 위치 락을 걸어 놓고 다시 검사함
+	
+	/********* 문제는 메모리 누수가 있다는 점 *********/
+
 	NODE head, tail;
-	vector<NODE *> free_list;
 public:
 	Optimistic_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
 	~Optimistic_synchronization_LIST() { Clear(); }
 
-	virtual void myTypePrint() { printf(" %s == 게으른 동기화\n\n", typeid(*this).name()); }
+	virtual void myTypePrint() { printf(" %s == 낙천적 동기화\n\n", typeid(*this).name()); }
 
 	virtual bool Add(int x) {
 		NODE *prev, *curr;
 
-		prev = Search_key(x);
-		curr = prev->next;
+		while (true)
+		{
+			prev = Search_key(x);
+			curr = prev->next;
 
-		prev->m_L.lock();
-		curr->m_L.lock();
+			prev->Lock();
+			curr->Lock();
 
-		if (false == validate(prev, curr)) {
-			curr->m_L.unlock();
-			prev->m_L.unlock();
-			continue;
-		}
+			if (false == validate(prev, curr)) {
+				curr->Unlock();
+				prev->Unlock();
+				continue;
+			}
 
-		if (x == curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
-			return false;
-		}
-		else {
-			NODE *node = new NODE{ x };
-			node->next = curr;
-			prev->next = node;
-			prev->m_L.unlock();
-			curr->m_L.unlock();
-			return true;
+			if (x == curr->key) {
+				curr->Unlock();
+				prev->Unlock();
+				return false;
+			}
+			else {
+				NODE *node = new NODE{ x };
+				node->next = curr;
+				prev->next = node;
+				curr->Unlock();
+				prev->Unlock();
+				return true;
+			}
 		}
 	};
 
 	virtual bool Remove(int x) {
 		NODE *prev, *curr;
 
-		prev = Search_key(x);
-		curr = prev->next;
-		if (x != curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
-			return false;
-		}
-		else {
-			curr->next->m_L.lock();
-			prev->next = curr->next;
-			curr->next->m_L.unlock();
-			curr->m_L.unlock();
-			delete curr;
-			prev->m_L.unlock();
-			return true;
+		while (true)
+		{
+			prev = Search_key(x);
+			curr = prev->next;
+
+			prev->Lock();
+			curr->Lock();
+
+			if (false == validate(prev, curr)) {
+				prev->Unlock();
+				curr->Unlock();
+				continue;;
+			}
+
+			if (x != curr->key) {
+				curr->Unlock();
+				prev->Unlock();
+				return false;
+			}
+			else {
+				prev->next = curr->next;
+				//free_list.insert(curr);
+				curr->Unlock();
+				prev->Unlock();
+				return true;
+			}
 		}
 	};
 
@@ -366,18 +373,30 @@ public:
 	virtual bool Contains(int x) {
 		NODE *prev, *curr;
 
-		prev = Search_key(x);
-		curr = prev->next;
+		while (true)
+		{
+			prev = Search_key(x);
+			curr = prev->next;
 
-		if (x != curr->key) {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
-			return false;
-		}
-		else {
-			prev->m_L.unlock();
-			curr->m_L.unlock();
-			return true;
+			prev->Lock();
+			curr->Lock();
+
+			if (false == validate(prev, curr)) {
+				curr->Unlock();
+				prev->Unlock();
+				continue;
+			}
+
+			if (x != curr->key) {
+				prev->Unlock();
+				curr->Unlock();
+				return false;
+			}
+			else {
+				prev->Unlock();
+				curr->Unlock();
+				return true;
+			}
 		}
 	};
 
@@ -390,6 +409,8 @@ public:
 			head.next = ptr->next;
 			delete ptr;
 		}
+
+		//free_list.Clear();
 	}
 
 	// 값이 제대로 들어갔나 확인하기 위한 기본 앞쪽 20개 체크
@@ -415,6 +436,8 @@ private:
 		}
 		return prev;
 	}
+
+	bool validate(NODE *prev, NODE *curr) {	return (Search_key(curr->key)->next == curr);}
 };
 
 
@@ -436,6 +459,7 @@ int main() {
 
 	List_Classes.emplace_back(new Coarse_grained_synchronization_LIST());
 	List_Classes.emplace_back(new Fine_grained_synchronization_LIST());
+	//List_Classes.emplace_back(new Optimistic_synchronization_LIST());	// 메모리 누수가 있다.
 
 	vector<thread *> worker_thread;
 	Time_Check t;
@@ -453,9 +477,11 @@ int main() {
 			cout << num_thread << " Core\t";
 			t.show();
 			classes->Print20();
+			classes->Clear();
 		}
 		cout << "\n---- Next Class ----\n";
 	}
 
 	for (auto classes : List_Classes) { delete classes; }
+	system("pause");
 }
