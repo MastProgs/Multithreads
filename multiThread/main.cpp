@@ -574,8 +574,6 @@ private:
 
 class Shared_ptr_Lazy_synchronization_List : public Virtual_Class {
 	// shared_ptr
-
-	// free-list 를 만들지 않아서, 역시나 누수
 	shared_ptr<NODE> head, tail;
 public:
 	Shared_ptr_Lazy_synchronization_List() { head = make_shared<NODE>(0x80000000, 0); tail = make_shared<NODE>(0x7fffffff, 0); head->shared = tail; tail->shared = nullptr; }
@@ -606,7 +604,7 @@ public:
 				return false;
 			}
 			else {
-				shared_ptr<NODE> node = make_shared<NODE>(x, 0);
+				shared_ptr<NODE> node(new NODE(x, 0));
 				node->shared = curr;
 				prev->shared = node;
 				curr->Unlock();
@@ -630,7 +628,7 @@ public:
 			if (false == validate(prev, curr)) {
 				curr->Unlock();
 				prev->Unlock();
-				continue;;
+				continue;
 			}
 
 			if (x != curr->key) {
@@ -640,7 +638,7 @@ public:
 			}
 			else {
 				curr->marked = true;
-				prev->next = curr->next;
+				prev->shared = curr->shared;
 				//free_list.insert(curr);
 				curr->Unlock();
 				prev->Unlock();
