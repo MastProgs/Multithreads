@@ -637,7 +637,7 @@ public:
 			if (false == validate(prev, curr)) {
 				curr->Unlock();
 				prev->Unlock();
-				continue;;
+				continue;
 			}
 
 			if (x != curr->key) {
@@ -647,7 +647,7 @@ public:
 			}
 			else {
 				curr->marked = true;
-				prev->next = curr->next;
+				prev->shared = curr->shared;
 				//free_list.insert(curr);
 				curr->Unlock();
 				prev->Unlock();
