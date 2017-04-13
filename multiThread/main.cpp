@@ -575,7 +575,14 @@ private:
 class Shared_ptr_Lazy_synchronization_List : public Virtual_Class {
 	// shared_ptr
 
-	// free-list 를 만들지 않아서, 역시나 누수
+	// 일반 포인터에서 ->next 같은게 atomic 하게 한번에 32bit 값으로 돌아가기 때문에 중간값이 없다.
+	// 하지만, shared_ptr 같은 경우는 절대 그렇지 않다. 중간값이 존재한다. 2 stack 으로 읽고 쓴다. ( 8 bytes )
+	// 중간값 포인터가 존재하기 때문에, 읽고 쓰는 중간에 문제가 발생할 수 밖에 없다.
+
+	// 해결책 1. lock 을 건다 ! (하지만 성능 똥망테크)
+	// 해결책 2. atomic_shared_ptr 를 쓴다. ( 하지만 이런건 없다. 다만 C++20 표준 제안 ) -> 파는 곳이 있다. 성능도 괜찮다!
+	// 해결책 3. atomic 한 shared_ptr 를 만든다.
+	// 해결책 4. atomic operation ( atomic stom, atomic load 같은 함수가 따로 있다. 작동을 atomic 하게.. )
 	shared_ptr<NODE> head, tail;
 public:
 	Shared_ptr_Lazy_synchronization_List() { head = make_shared<NODE>(0x80000000, 0); tail = make_shared<NODE>(0x7fffffff, 0); head->shared = tail; tail->shared = nullptr; }
@@ -681,13 +688,18 @@ private:
 		curr = head->shared;
 
 		while (curr->key < key) {
+			// 터지는 문제를 해결하려면, 각 노드마다 lock 을 걸어야 하는데...
+			// 그렇게 되면 사실상 세밀한 동기화랑 다를바가 없다.
+
+			// C++ 에서 atomic_store 와 같은 자동 변환 연산을 제공하지 않으므로, 따로 Node 를 수정해야함
+			/// *(reinterpret_cast<long long *>(prev)) atomic_store( reinterpret_cast<long long>(curr) );
 			prev = curr;
 			curr = curr->shared;
 		}
 		return prev;
 	}
 
-	bool validate(shared_ptr<NODE> prev, shared_ptr<NODE> curr) {
+	bool validate(const shared_ptr<NODE> &prev, const shared_ptr<NODE> &curr) {
 		return ((!prev->marked) && (!curr->marked) && (prev->shared == curr));
 	}
 };
@@ -711,7 +723,7 @@ int main() {
 	//List_Classes.emplace_back(new Fine_grained_synchronization_LIST());
 	//List_Classes.emplace_back(new Optimistic_synchronization_LIST());	// 메모리 누수가 있다.
 	//List_Classes.emplace_back(new Lazy_synchronization_List());	// 메모리 누수가 있다.
-	List_Classes.emplace_back(new Shared_ptr_Lazy_synchronization_List());
+	List_Classes.emplace_back(new Shared_ptr_Lazy_synchronization_List());	// 돌다가 터짐
 
 	vector<thread *> worker_thread;
 	Time_Check t;
