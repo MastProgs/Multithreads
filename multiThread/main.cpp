@@ -588,7 +588,7 @@ public:
 	Shared_ptr_Lazy_synchronization_List() { head = make_shared<NODE>(0x80000000, 0); tail = make_shared<NODE>(0x7fffffff, 0); head->shared = tail; tail->shared = nullptr; }
 	~Shared_ptr_Lazy_synchronization_List() { Clear(); head = nullptr; tail = nullptr; }
 
-	virtual void myTypePrint() { printf(" %s == 게으른 동기화, shared_ptr\n\n", typeid(*this).name()); }
+	virtual void myTypePrint() { printf(" %s == 게으른 동기화, shared_ptr ( 포인터값 변경시 중간값이 튀어나오므로 터짐 )\n\n", typeid(*this).name()); }
 
 	virtual bool Add(int x) {
 		shared_ptr<NODE> prev, curr;
@@ -613,12 +613,12 @@ public:
 				return false;
 			}
 			else {
-				shared_ptr<NODE> node = make_shared<NODE>(x, 0);
-				node->shared = curr;
-				prev->shared = node;
-				curr->Unlock();
-				prev->Unlock();
-				return true;
+shared_ptr<NODE> node = make_shared<NODE>(x, 0);
+node->shared = curr;
+prev->shared = node;
+curr->Unlock();
+prev->Unlock();
+return true;
 			}
 		}
 	};
@@ -704,6 +704,140 @@ private:
 	}
 };
 
+using LFNODE = class Lock_free_Node {
+public:
+	int key;
+	unsigned int next;
+	Lock_free_Node() {
+		next = NULL;
+	}
+	~Lock_free_Node() {};
+
+	LFNODE *GetNext() { return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE); }
+
+	bool CAS(int old_value, int new_value) {
+		return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&next), &old_value, new_value);
+	}
+
+	bool CAS(Lock_free_Node *old_aadr, Lock_free_Node *new_addr, bool old_mark, bool new_mark) {
+		int old_value = reinterpret_cast<int>(old_aadr);
+		if (old_mark) { old_value = old_value | 1; }
+		else old_value = old_value & 0xFFFFFFFE;
+
+		int new_value = reinterpret_cast<int>(new_addr);
+		if (new_mark) { new_value = new_value | 1; }
+		else new_value = new_value & 0xFFFFFFFE;
+
+		return CAS(old_value, new_value);
+	}
+};
+
+class Nonblocking_synchronization_List : public Virtual_Class {	// 금요일 ( 암호 )
+	LFNODE head, tail;
+public:
+	Nonblocking_synchronization_List() { head.key = 0x80000000; head.next = reinterpret_cast<int>(&tail); tail.key = 0x7fffffff; tail.next = NULL; }
+	~Nonblocking_synchronization_List() { Clear(); }
+
+	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화\n\n", typeid(*this).name()); }
+
+	virtual bool Add(int x) {
+		LFNODE *prev, *curr;
+
+		while (true)
+		{
+			prev = Search_key(x, &prev, *curr);
+			curr = prev->next;
+			
+			if (x == curr->key) {
+				return false;
+			}
+			else {
+				NODE *node = new NODE{ x };
+				node->next = curr;
+				prev->next = node;
+				return true;
+			}
+		}
+	};
+
+	virtual bool Remove(int x) {
+		NODE *prev, *curr;
+
+		while (true)
+		{
+			prev = Search_key(x);
+			curr = prev->next;
+
+			prev->Lock();
+			curr->Lock();
+
+			if (false == validate(prev, curr)) {
+				curr->Unlock();
+				prev->Unlock();
+				continue;;
+			}
+
+			if (x != curr->key) {
+				curr->Unlock();
+				prev->Unlock();
+				return false;
+			}
+			else {
+				curr->marked = true;
+				prev->next = curr->next;
+				//free_list.insert(curr);
+				curr->Unlock();
+				prev->Unlock();
+				return true;
+			}
+		}
+	};
+
+	virtual bool Contains(int x) {
+		NODE *prev, *curr;
+
+		prev = Search_key(x);
+		curr = prev->next;
+
+		return ((curr->key == x) && (!curr->marked));
+	};
+
+	// 내부 노드 전부 해제
+	virtual void Clear() {
+
+		while (head.next != reinterpret_cast<int>(&tail))
+		{
+			LFNODE *ptr = reinterpret_cast<LFNODE *>(head.next);
+			head.next = reinterpret_cast<int>(ptr->GetNext());
+			delete ptr;
+		}
+	}
+
+	// 값이 제대로 들어갔나 확인하기 위한 기본 앞쪽 20개 체크
+	virtual void Print20() {
+		LFNODE *ptr = head.GetNext();
+		for (int i = 0; i < 20; ++i) {
+			if (&tail == ptr) { break; }
+			cout << ptr->key << " ";
+			ptr = ptr->GetNext();
+		}
+		cout << "\n\n";
+	}
+private:
+	NODE* Search_key(int key, LFNODE* prev, LFNODE* curr) {
+		NODE *prev, *curr;
+
+		prev = &head;
+		curr = head.next;
+
+		while (curr->key < key) {
+			prev = curr;
+			curr = curr->next;
+		}
+		return prev;
+	}
+};
+
 // Coarse_grained_synchronization_LIST c_set; // 성긴 동기화
 
 // Fine_grained_synchronization_LIST f_set; // 세밀한 동기화
@@ -723,7 +857,8 @@ int main() {
 	//List_Classes.emplace_back(new Fine_grained_synchronization_LIST());
 	//List_Classes.emplace_back(new Optimistic_synchronization_LIST());	// 메모리 누수가 있다.
 	//List_Classes.emplace_back(new Lazy_synchronization_List());	// 메모리 누수가 있다.
-	List_Classes.emplace_back(new Shared_ptr_Lazy_synchronization_List());	// 돌다가 터짐
+	//List_Classes.emplace_back(new Shared_ptr_Lazy_synchronization_List());	// 돌다가 터짐
+	List_Classes.emplace_back(new Nonblocking_synchronization_List());
 
 	vector<thread *> worker_thread;
 	Time_Check t;
