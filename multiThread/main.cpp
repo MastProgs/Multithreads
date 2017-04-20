@@ -613,12 +613,12 @@ public:
 				return false;
 			}
 			else {
-shared_ptr<NODE> node = make_shared<NODE>(x, 0);
-node->shared = curr;
-prev->shared = node;
-curr->Unlock();
-prev->Unlock();
-return true;
+				shared_ptr<NODE> node = make_shared<NODE>(x, 0);
+				node->shared = curr;
+				prev->shared = node;
+				curr->Unlock();
+				prev->Unlock();
+				return true;
 			}
 		}
 	};
@@ -715,6 +715,11 @@ public:
 
 	LFNODE *GetNext() { return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE); }
 
+	LFNODE *GetNextWithMark(bool *removed) {
+		*removed = (1 == (next & 0x1));
+		return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE);
+	}
+
 	bool CAS(int old_value, int new_value) {
 		return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&next), &old_value, new_value);
 	}
@@ -722,11 +727,11 @@ public:
 	bool CAS(Lock_free_Node *old_aadr, Lock_free_Node *new_addr, bool old_mark, bool new_mark) {
 		int old_value = reinterpret_cast<int>(old_aadr);
 		if (old_mark) { old_value = old_value | 1; }
-		else old_value = old_value & 0xFFFFFFFE;
+		else { old_value = old_value & 0xFFFFFFFE; }
 
 		int new_value = reinterpret_cast<int>(new_addr);
 		if (new_mark) { new_value = new_value | 1; }
-		else new_value = new_value & 0xFFFFFFFE;
+		else { new_value = new_value & 0xFFFFFFFE; }
 
 		return CAS(old_value, new_value);
 	}
@@ -745,7 +750,8 @@ public:
 
 		while (true)
 		{
-			prev = Search_key(x, &prev, *curr);
+			//prev = Search_key(x, &prev, &curr);
+			prev = Search_key(x, prev, curr);
 			curr = prev->next;
 			
 			if (x == curr->key) {
@@ -761,11 +767,11 @@ public:
 	};
 
 	virtual bool Remove(int x) {
-		NODE *prev, *curr;
+		LFNODE *prev, *curr;
 
 		while (true)
 		{
-			prev = Search_key(x);
+			prev = Search_key(x, &prev, &curr);
 			curr = prev->next;
 
 			prev->Lock();
@@ -824,17 +830,34 @@ public:
 		cout << "\n\n";
 	}
 private:
-	NODE* Search_key(int key, LFNODE* prev, LFNODE* curr) {
-		NODE *prev, *curr;
+	LFNODE * Search_key(int key, LFNODE* prev, LFNODE* curr) {
+
+		//LFNODE *pr = *prev, *cu = *curr;
+		LFNODE *success;
+		bool removed;
+
+		RESTART:
 
 		prev = &head;
-		curr = head.next;
-
-		while (curr->key < key) {
-			prev = curr;
-			curr = curr->next;
+		success = prev->GetNextWithMark(&removed);
+		while (true == removed) {
+			if (false == prev->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
+			success = success->GetNextWithMark(&removed);
 		}
-		return prev;
+		curr = success;
+
+		while (true) {
+			success = curr->GetNextWithMark(&removed);
+
+			while (true == removed) {
+				if (false == curr->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
+				success = success->GetNextWithMark(&removed);
+			}
+
+			if (curr->key >= key) { return prev; }
+			prev = curr;
+			curr = success;
+		}
 	}
 };
 
