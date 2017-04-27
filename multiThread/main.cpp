@@ -705,12 +705,12 @@ private:
 };
 
 using LFNODE = class Lock_free_Node {
+	unsigned int next;
 public:
 	int key;
-	unsigned int next;
-	Lock_free_Node() {
-		next = NULL;
-	}
+
+	Lock_free_Node(int x) : key{ x } { next = NULL; }
+	Lock_free_Node() { next = NULL; }
 	~Lock_free_Node() {};
 
 	LFNODE *GetNext() { return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE); }
@@ -747,18 +747,19 @@ public:
 
 	virtual bool Add(int x) {
 		LFNODE *prev, *curr;
+		bool removed;
 
 		while (true)
 		{
 			//prev = Search_key(x, &prev, &curr);
 			prev = Search_key(x, prev, curr);
-			curr = prev->next;
+			curr = prev->GetNext();
 			
 			if (x == curr->key) {
 				return false;
 			}
 			else {
-				NODE *node = new NODE{ x };
+				LFNODE *node = new LFNODE{ x };
 				node->next = curr;
 				prev->next = node;
 				return true;
