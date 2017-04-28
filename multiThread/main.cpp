@@ -42,6 +42,52 @@ public:
 	void Unlock() { m_L.unlock(); }
 };
 
+class Free_list {
+public:
+	mutex fl_lock;
+	NODE head;
+
+	Free_list() {
+		head.next = nullptr;
+	}
+	~Free_list() {
+		NODE *p = head.next;
+		while (nullptr != p)
+		{
+			head.next = p->next;
+			delete p;
+			p = head.next;
+		}
+	}
+
+	NODE *GetNode(int x) {
+		fl_lock.lock();
+
+		if (nullptr == head.next) {
+			fl_lock.unlock();
+			return new NODE;
+		}
+		else {
+			auto p = head.next;
+			head.next = p->next;
+			fl_lock.unlock();
+			p->key = x;
+			p->next = nullptr;
+			p->marked = false;
+			return p;
+		}
+	}
+
+	void DeleteNode(NODE *p) {
+		fl_lock.lock();
+		p->next = head.next;
+		head.next = p;
+		fl_lock.unlock();
+	}
+};
+
+Free_list free_list;
+
 class Virtual_Class {
 public:
 	Virtual_Class() {};
@@ -363,6 +409,9 @@ public:
 				return false;
 			}
 			else {
+
+				NODE *p = free_list.GetNode(curr->key);
+
 				prev->next = curr->next;
 				//free_list.insert(curr);
 				curr->Unlock();
