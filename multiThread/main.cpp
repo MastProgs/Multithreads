@@ -705,19 +705,21 @@ private:
 };
 
 using LFNODE = class Lock_free_Node {
-	unsigned int next;
 public:
+	unsigned int next;
 	int key;
 
 	Lock_free_Node(int x) : key{ x } { next = NULL; }
 	Lock_free_Node() { next = NULL; }
 	~Lock_free_Node() {};
 
-	LFNODE *GetNext() { return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE); }
+	bool DoMark(Lock_free_Node *ptr) { return CAS(ptr, ptr, false, true); }
 
-	LFNODE *GetNextWithMark(bool *removed) {
+	Lock_free_Node *GetNext() { return reinterpret_cast<Lock_free_Node*>(next & 0xFFFFFFFE); }
+
+	Lock_free_Node *GetNextWithMark(bool *removed) {
 		*removed = (1 == (next & 0x1));
-		return reinterpret_cast<LFNODE*>(next & 0xFFFFFFFE);
+		return reinterpret_cast<Lock_free_Node*>(next & 0xFFFFFFFE);
 	}
 
 	bool CAS(int old_value, int new_value) {
@@ -749,6 +751,8 @@ public:
 		LFNODE *prev, *curr;
 		bool removed;
 
+		RESTART:
+
 		while (true)
 		{
 			//prev = Search_key(x, &prev, &curr);
@@ -760,9 +764,11 @@ public:
 			}
 			else {
 				LFNODE *node = new LFNODE{ x };
-				node->next = curr;
-				prev->next = node;
-				return true;
+				node->next = reinterpret_cast<unsigned int>(curr);
+				//prev->next = reinterpret_cast<unsigned int>(node);
+				if (true == prev->CAS(curr, node, false, false)) { return true; }
+				//return true;
+				goto RESTART;
 			}
 		}
 	};
@@ -772,41 +778,39 @@ public:
 
 		while (true)
 		{
-			prev = Search_key(x, &prev, &curr);
-			curr = prev->next;
-
-			prev->Lock();
-			curr->Lock();
-
-			if (false == validate(prev, curr)) {
-				curr->Unlock();
-				prev->Unlock();
-				continue;;
-			}
-
+			prev = Search_key(x, prev, curr);
+			curr = prev->GetNext();
+			
 			if (x != curr->key) {
-				curr->Unlock();
-				prev->Unlock();
 				return false;
 			}
 			else {
-				curr->marked = true;
-				prev->next = curr->next;
-				//free_list.insert(curr);
-				curr->Unlock();
-				prev->Unlock();
+				LFNODE *succ = curr->GetNext();
+				if (true == curr->DoMark(succ)) {
+
+					if(false == prev->CAS(curr, succ, false, false)) {
+						return false;
+					}
+
+					return true;
+				}
 				return true;
 			}
 		}
 	};
 
 	virtual bool Contains(int x) {
-		NODE *prev, *curr;
+		LFNODE *prev, *curr;
 
-		prev = Search_key(x);
-		curr = prev->next;
-
-		return ((curr->key == x) && (!curr->marked));
+		prev = &head;
+		curr = prev->GetNext();
+		while (prev->key >= x)
+		{
+			prev = curr;
+			curr = curr->GetNext();
+		}
+		
+		return ((prev->key == x) && (!(prev->next) & 0x01));
 	};
 
 	// 내부 노드 전부 해제
@@ -835,29 +839,44 @@ private:
 
 		//LFNODE *pr = *prev, *cu = *curr;
 		LFNODE *success;
-		bool removed;
+		bool marked;
 
 		RESTART:
-
+/*
 		prev = &head;
-		success = prev->GetNextWithMark(&removed);
-		while (true == removed) {
+		success = prev->GetNextWithMark(&marked);
+		while (true == marked) {
 			if (false == prev->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
-			success = success->GetNextWithMark(&removed);
+			success = success->GetNextWithMark(&marked);
 		}
 		curr = success;
 
 		while (true) {
-			success = curr->GetNextWithMark(&removed);
+			success = curr->GetNextWithMark(&marked);
 
-			while (true == removed) {
+			while (true == marked) {
 				if (false == curr->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
-				success = success->GetNextWithMark(&removed);
+				success = success->GetNextWithMark(&marked);
 			}
 
 			if (curr->key >= key) { return prev; }
 			prev = curr;
 			curr = success;
+		}
+*/
+
+		while (true)
+		{
+			LFNODE *succ = curr->GetNextWithMark(&marked);
+			while (true == marked)
+			{
+				if (false == prev->CAS(curr, succ, false, false)) { goto RESTART; }
+				curr = succ;
+				succ = curr->GetNextWithMark(&marked);
+			}
+			if (curr->key >= key) {	return prev; }
+			prev = curr;
+			curr = succ;
 		}
 	}
 };
