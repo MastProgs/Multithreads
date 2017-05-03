@@ -791,7 +791,12 @@ public:
 class Nonblocking_synchronization_List : public Virtual_Class {	// 금요일 ( 암호 )
 	LFNODE head, tail;
 public:
-	Nonblocking_synchronization_List() { head.key = 0x80000000; head.next = reinterpret_cast<int>(&tail); tail.key = 0x7fffffff; tail.next = NULL; }
+	Nonblocking_synchronization_List() {
+		head.key = 0x80000000;
+		head.next = reinterpret_cast<int>(&tail);
+		tail.key = 0x7fffffff;
+		tail.next = NULL;
+	}
 	~Nonblocking_synchronization_List() { Clear(); }
 
 	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화\n\n", typeid(*this).name()); }
@@ -800,7 +805,10 @@ public:
 		LFNODE *prev, *curr;
 		bool removed;
 
-		RESTART:
+	RESTART:
+
+		prev = &head;
+		curr = prev->GetNext();
 
 		while (true)
 		{
@@ -824,6 +832,9 @@ public:
 
 	virtual bool Remove(int x) {
 		LFNODE *prev, *curr;
+
+		prev = &head;
+		curr = prev->GetNext();
 
 		while (true)
 		{
@@ -886,46 +897,24 @@ public:
 private:
 	LFNODE * Search_key(int key, LFNODE* prev, LFNODE* curr) {
 
-		//LFNODE *pr = *prev, *cu = *curr;
-		LFNODE *success;
+		LFNODE *pr, *cu;
 		bool marked;
 
-		RESTART:
-/*
-		prev = &head;
-		success = prev->GetNextWithMark(&marked);
-		while (true == marked) {
-			if (false == prev->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
-			success = success->GetNextWithMark(&marked);
-		}
-		curr = success;
-
-		while (true) {
-			success = curr->GetNextWithMark(&marked);
-
-			while (true == marked) {
-				if (false == curr->CAS(success, success->GetNext(), false, false)) { goto RESTART; }
-				success = success->GetNextWithMark(&marked);
-			}
-
-			if (curr->key >= key) { return prev; }
-			prev = curr;
-			curr = success;
-		}
-*/
-
+	RESTART:
+		pr = prev, cu = curr;
+		
 		while (true)
 		{
-			LFNODE *succ = curr->GetNextWithMark(&marked);
+			LFNODE *succ = cu->GetNextWithMark(&marked);
 			while (true == marked)
 			{
-				if (false == prev->CAS(curr, succ, false, false)) { goto RESTART; }
-				curr = succ;
-				succ = curr->GetNextWithMark(&marked);
+				if (false == pr->CAS(cu, succ, false, false)) { goto RESTART; }
+				cu = succ;
+				succ = cu->GetNextWithMark(&marked);
 			}
-			if (curr->key >= key) {	return prev; }
-			prev = curr;
-			curr = succ;
+			if (cu->key >= key) {	return pr; }
+			pr = cu;
+			cu = succ;
 		}
 	}
 };
@@ -967,7 +956,7 @@ int main() {
 
 			cout << num_thread << " Core\t";
 			t.show();
-			classes->Print20();
+			//classes->Print20();
 			classes->Clear();
 		}
 		cout << "\n---- Next Class ----\n";
