@@ -1,7 +1,7 @@
 #include <iostream>
 #include <typeinfo>
 #include <thread>
-#include <chrono>
+#include "TimeCheck.h"
 #include <mutex>
 #include <vector>
 #include <atomic>
@@ -11,19 +11,6 @@
 
 using namespace std;
 using namespace chrono;
-
-class Time_Check {
-public:
-	Time_Check() {};
-	~Time_Check() {};
-	void check() { m_t = high_resolution_clock::now(); }
-	void check_end() { m_te = high_resolution_clock::now(); }
-	void check_and_show() { check_end(); show(); }
-	void show(){ cout << " Time : " << duration_cast<milliseconds>(m_te - m_t).count() << " ms\n";	}
-private:
-	high_resolution_clock::time_point m_t;
-	high_resolution_clock::time_point m_te;
-};
 
 class NODE {
 	mutex m_L;
