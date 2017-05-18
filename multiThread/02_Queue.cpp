@@ -25,7 +25,7 @@ public:
 	}
 
 	virtual void Enqueue(int) = 0;
-	virtual int Dequeue(void) = 0;
+	virtual int Dequeue() = 0;
 
 	virtual void Clear() = 0;
 	virtual void Print20() = 0;
@@ -42,17 +42,11 @@ public:
 	NODE() { next = nullptr; };
 	NODE(int k) : key{ k }, next{ nullptr } {};
 	~NODE() {};
-
-	void Lock() { L.lock(); }
-	void Unlock() { L.unlock(); }
-
-private:
-	mutex L;
 };
 
 class CorseGrain_QUEUE : public Virtual_Class
 {
-	NODE *head;
+	NODE head;
 	NODE *tail;
 
 	mutex enqL;
@@ -60,10 +54,10 @@ class CorseGrain_QUEUE : public Virtual_Class
 public:
 
 	CorseGrain_QUEUE() {
-		head = tail = new NODE;
+		tail = &head;
 		tail->next = nullptr;
 	};
-	~CorseGrain_QUEUE() {};
+	~CorseGrain_QUEUE() { Clear(); };
 
 private:
 	virtual void Enqueue(int key) {
@@ -72,18 +66,18 @@ private:
 		tail = tail->next;
 		enqL.unlock();
 	};
+
 	virtual int Dequeue() {
 		deqL.lock();
-		if (nullptr == head->next) {
+		if (nullptr == head.next) {
 			deqL.unlock();
 			cout << "Queue is Empty\n";
 			return -1;
 		}
 
-		int key;
-		NODE *temp = head->next;
-		key = temp->key;
-		head->next = temp->next;
+		NODE *temp = head.next;
+		int key = temp->key;
+		head.next = temp->next;
 		delete temp;
 
 		deqL.unlock();
@@ -91,15 +85,25 @@ private:
 	};
 
 	virtual void Clear() {
-		NODE *temp = head->next;
-		while (nullptr != head->next)
+		NODE *temp;
+		while (nullptr != head.next)
 		{
-			head->next = temp->next;
+			temp = head.next;
+			head.next = temp->next;
 			delete temp;
 		}
-		delete head;
+		tail = &head;
 	};
-	virtual void Print20() {};
+
+	virtual void Print20() {
+		NODE *ptr = head.next;
+		for (int i = 0; i < 20; ++i) {
+			if (tail == ptr) { break; }
+			cout << ptr->key << " ";
+			ptr = ptr->next;
+		}
+		cout << "\n\n";
+	};
 
 	virtual void myTypePrint() { printf(" %s == 성긴 동기화\n\n", typeid(*this).name()); };
 };
@@ -107,6 +111,7 @@ private:
 int main() {
 	setlocale(LC_ALL, "korean");
 	vector<Virtual_Class *> List_Classes;
+
 	List_Classes.emplace_back(new CorseGrain_QUEUE());
 
 	vector<thread *> worker_thread;
