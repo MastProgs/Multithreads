@@ -120,19 +120,19 @@ public:
 	bool CAS(int old_value, int new_value) {
 		return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&next), &old_value, new_value);
 	}
-
-	bool CAS(LFNODE * wantToChange, LFNODE * currValue, LFNODE * wantResultValue) {
-		int oldValue = reinterpret_cast<int>(currValue);
-		int newValue = reinterpret_cast<int>(wantResultValue);
-		return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&wantToChange), &oldValue, newValue);
-	}
-
+	
 	bool CAS(LFNODE * currValue, LFNODE * wantResultValue) {
 		int oldValue = reinterpret_cast<int>(currValue);
 		int newValue = reinterpret_cast<int>(wantResultValue);
 		return CAS(oldValue, newValue);
 	}
 };
+
+bool CAS(LFNODE * wantToChange, LFNODE * currValue, LFNODE * wantResultValue) {
+	int oldValue = reinterpret_cast<int>(currValue);
+	int newValue = reinterpret_cast<int>(wantResultValue);
+	return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&wantToChange), &oldValue, newValue);
+}
 
 class Nonblocking_Queue : public Virtual_Class
 {
@@ -157,14 +157,14 @@ private:
 				// 일단 한번 마지막에 새 노드를 추가하는 것을 시도해 본다.
 				if (true == last->CAS(nullptr, newNode)) {
 					// tail 포인터를 뒤로 한칸 옮긴다. 실패하면, 누군가 대신 옮겨준거니 상관 없다.
-					last->CAS(tail, last, newNode);
+					CAS(tail, last, newNode);
 					// 여기 CAS 에서 뭔가 꼬이는 문제가 존재한다.. 한번 들어오고 무한 루프에 빠짐..
 					return;
 				}
 			}
 			else {
 				// 만약 tail 위치가 last 위치랑 다르다고 하면, 고집 부릴 필요 없다. 과거로 덮어쓰기 때문.
-				last->CAS(tail, last, next);
+				CAS(tail, last, next);
 			}
 		}
 	};
@@ -179,11 +179,11 @@ private:
 			if (first != head) { continue; }
 			if (first == last) {
 				if (nullptr == next) { return -1; }
-				last->CAS(tail, last, next);
+				CAS(tail, last, next);
 				continue;
 			}
 			int key = next->key;
-			if (false == first->CAS(head, first, next)) { continue; }
+			if (false == CAS(head, first, next)) { continue; }
 			delete first;
 			return key;
 		}
