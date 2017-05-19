@@ -800,8 +800,7 @@ public:
 		while (true)
 		{
 			//prev = Search_key(x, &prev, &curr);
-			prev = Search_key(x, prev, curr);
-			curr = prev->GetNext();
+			Search_key(x, &prev, &curr);
 			
 			if (x == curr->key) {
 				return false;
@@ -825,8 +824,7 @@ public:
 
 		while (true)
 		{
-			prev = Search_key(x, prev, curr);
-			curr = prev->GetNext();
+			Search_key(x, &prev, &curr);
 			
 			if (x != curr->key) {
 				return false;
@@ -882,24 +880,25 @@ public:
 		cout << "\n\n";
 	}
 private:
-	LFNODE * Search_key(int key, LFNODE* prev, LFNODE* curr) {
+	LFNODE * Search_key(int key, LFNODE** prev, LFNODE** curr) {
 
-		LFNODE *pr, *cu;
+		LFNODE *pr = *prev, *cu = *curr;
 		bool marked;
 
 	RESTART:
-		pr = prev, cu = curr;
+		pr = &head, cu = pr->GetNext();
 		
 		while (true)
 		{
 			LFNODE *succ = cu->GetNextWithMark(&marked);
 			while (true == marked)
 			{
+				// 여기서 스레드 2개 이상 일 때, 무한루프 걸림... ??
 				if (false == pr->CAS(cu, succ, false, false)) { goto RESTART; }
 				cu = succ;
 				succ = cu->GetNextWithMark(&marked);
 			}
-			if (cu->key >= key) {	return pr; }
+			if (cu->key >= key) { return pr; }
 			pr = cu;
 			cu = succ;
 		}
@@ -943,7 +942,7 @@ int main() {
 
 			cout << num_thread << " Core\t";
 			t.show();
-			//classes->Print20();
+			classes->Print20();
 			classes->Clear();
 		}
 		cout << "\n---- Next Class ----\n";
