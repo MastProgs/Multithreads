@@ -46,7 +46,7 @@ public:
 
 class CorseGrain_QUEUE : public Virtual_Class
 {
-	NODE head;
+	NODE *head;
 	NODE *tail;
 
 	mutex enqL;
@@ -54,10 +54,13 @@ class CorseGrain_QUEUE : public Virtual_Class
 public:
 
 	CorseGrain_QUEUE() {
-		tail = &head;
+		tail = head = new NODE;
 		tail->next = nullptr;
 	};
-	~CorseGrain_QUEUE() { Clear(); };
+	~CorseGrain_QUEUE() {
+		Clear();
+		if (nullptr != head) { delete head; }
+	};
 
 private:
 	virtual void Enqueue(int key) {
@@ -69,15 +72,15 @@ private:
 
 	virtual int Dequeue() {
 		deqL.lock();
-		if (nullptr == head.next) {
+		if (nullptr == head->next) {
 			deqL.unlock();
 			cout << "Queue is Empty\n";
 			return -1;
 		}
 
-		NODE *temp = head.next;
-		int key = temp->key;
-		head.next = temp->next;
+		int key = head->next->key;
+		NODE *temp = head;
+		head = head->next;
 		delete temp;
 
 		deqL.unlock();
@@ -86,19 +89,19 @@ private:
 
 	virtual void Clear() {
 		NODE *temp;
-		while (nullptr != head.next)
+		while (tail != head)
 		{
-			temp = head.next;
-			head.next = temp->next;
+			temp = head;
+			head = head->next;
 			delete temp;
 		}
-		tail = &head;
+		tail = head = new NODE;
 	};
 
 	virtual void Print20() {
-		NODE *ptr = head.next;
+		NODE *ptr = head->next;
 		for (int i = 0; i < 20; ++i) {
-			if (tail == ptr) { break; }
+			if (nullptr == ptr) { break; }
 			cout << ptr->key << " ";
 			ptr = ptr->next;
 		}
@@ -128,10 +131,10 @@ public:
 	}
 };
 
-bool CAS(LFNODE * wantToChange, LFNODE * currValue, LFNODE * wantResultValue) {
+bool CAS(LFNODE * volatile * wantToChange, LFNODE * currValue, LFNODE * wantResultValue) {
 	int oldValue = reinterpret_cast<int>(currValue);
 	int newValue = reinterpret_cast<int>(wantResultValue);
-	return atomic_compare_exchange_strong(reinterpret_cast<atomic_int *>(&wantToChange), &oldValue, newValue);
+	return atomic_compare_exchange_strong(reinterpret_cast<atomic_int volatile *>(wantToChange), &oldValue, newValue);
 }
 
 class Nonblocking_Queue : public Virtual_Class
@@ -140,10 +143,13 @@ class Nonblocking_Queue : public Virtual_Class
 	LFNODE * volatile tail;
 public:
 	Nonblocking_Queue() {
-		tail = head = new LFNODE{ -1 };
+		tail = head = new LFNODE;
 		tail->next = nullptr;
 	}
-	~Nonblocking_Queue() { Clear(); }
+	~Nonblocking_Queue() {
+		Clear();
+		if (nullptr != head) { delete head; }
+	}
 	
 private:
 	virtual void Enqueue(int key) {
@@ -152,19 +158,19 @@ private:
 		{
 			LFNODE *last = tail;
 			LFNODE *next = last->next;
-			if (last != tail) continue;
+			if (last != tail) { continue; }
 			if (nullptr == next) {
 				// 일단 한번 마지막에 새 노드를 추가하는 것을 시도해 본다.
-				if (true == last->CAS(nullptr, newNode)) {
+				if (true == CAS(&(last->next), nullptr, newNode)) {
 					// tail 포인터를 뒤로 한칸 옮긴다. 실패하면, 누군가 대신 옮겨준거니 상관 없다.
-					CAS(tail, last, newNode);
+					CAS(&tail, last, newNode);
 					// 여기 CAS 에서 뭔가 꼬이는 문제가 존재한다.. 한번 들어오고 무한 루프에 빠짐..
 					return;
 				}
 			}
 			else {
 				// 만약 tail 위치가 last 위치랑 다르다고 하면, 고집 부릴 필요 없다. 과거로 덮어쓰기 때문.
-				CAS(tail, last, next);
+				CAS(&tail, last, next);
 			}
 		}
 	};
@@ -179,11 +185,11 @@ private:
 			if (first != head) { continue; }
 			if (first == last) {
 				if (nullptr == next) { return -1; }
-				CAS(tail, last, next);
+				CAS(&tail, last, next);
 				continue;
 			}
 			int key = next->key;
-			if (false == CAS(head, first, next)) { continue; }
+			if (false == CAS(&head, first, next)) { continue; }
 			delete first;
 			return key;
 		}
@@ -197,7 +203,7 @@ private:
 			head = temp->next;
 			delete temp;
 		}
-		tail = head;
+		tail = head = new LFNODE;
 	};
 
 	virtual void Print20() {
