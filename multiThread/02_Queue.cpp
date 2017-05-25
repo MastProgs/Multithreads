@@ -5,6 +5,7 @@
 #include <mutex>
 #include <vector>
 #include <atomic>
+#include <Windows.h>
 
 #define NUM_TEST 10000000
 #define KEY_RANGE 1000
@@ -160,11 +161,8 @@ private:
 			LFNODE *next = last->next;
 			if (last != tail) { continue; }
 			if (nullptr == next) {
-				// 일단 한번 마지막에 새 노드를 추가하는 것을 시도해 본다.
 				if (true == CAS(&(last->next), nullptr, newNode)) {
-					// tail 포인터를 뒤로 한칸 옮긴다. 실패하면, 누군가 대신 옮겨준거니 상관 없다.
 					CAS(&tail, last, newNode);
-					// 여기 CAS 에서 뭔가 꼬이는 문제가 존재한다.. 한번 들어오고 무한 루프에 빠짐..
 					return;
 				}
 			}
@@ -216,15 +214,130 @@ private:
 		cout << "\n\n";
 	};
 
-	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화\n\n", typeid(*this).name()); };
+	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화 ( ABA 문제가 발생한다 )\n\n", typeid(*this).name()); };
 };
+
+using PSNODE = class lockFreeStampNode {
+public:
+	NODE * volatile ptr;
+	int stamp;
+
+	lockFreeStampNode(NODE *node_ptr) {
+		ptr = node_ptr;
+		stamp = 0;
+	}
+
+	lockFreeStampNode(NODE *node_ptr, int new_stamp) {
+		ptr = node_ptr;
+		stamp = new_stamp;
+	}
+
+	lockFreeStampNode() { ptr = nullptr; stamp = 0; }
+	~lockFreeStampNode() { if (nullptr != ptr) delete ptr; }
+
+
+};
+
+bool CAS(PSNODE *addr, PSNODE * old_v, NODE * next) {
+	PSNODE new_psnode(next, old_v->stamp + 1);
+
+	long long temp = InterlockedCompareExchange64(
+		reinterpret_cast<volatile long long *>(addr),
+		*reinterpret_cast<long long *>(&new_psnode),
+		*reinterpret_cast<long long *>(old_v));
+
+	return temp == *reinterpret_cast<long long *>(old_v);
+}
+
+class Lock_free_stamp_Queue : public Virtual_Class
+{
+	PSNODE head;
+	PSNODE tail;
+public:
+	Lock_free_stamp_Queue() {
+		NODE * new_node = new NODE;
+		head = PSNODE(new_node);
+		tail = PSNODE(new_node);
+	}
+	~Lock_free_stamp_Queue() {
+		Clear();
+		if (nullptr != head.ptr) { delete head.ptr; }
+	}
+
+private:
+	virtual void Enqueue(int key) {
+		NODE *newNode = new NODE{ key };
+		while (true)
+		{
+			PSNODE last = tail;
+			NODE * next = last.ptr->next;
+			if (last.ptr != tail.ptr) { continue; }
+			if (nullptr == next) {
+				if (true == CAS(&last, &tail, newNode)) {
+					CAS(&tail, &last, newNode);
+					return;
+				}
+			}
+			else {
+				CAS(&tail, &last, next);
+			}
+		}
+	};
+
+	virtual int Dequeue() {
+
+		while (true)
+		{
+			PSNODE first = head;
+			PSNODE last = tail;
+			NODE *next = first.ptr->next;
+			if (first.ptr != head.ptr) { continue; }
+			if (first.ptr == last.ptr) {
+				if (nullptr == next) { return -1; }
+				CAS(&tail, &last, next);
+				continue;
+			}
+			int key = next->key;
+			if (false == CAS(&head, &first, next)) { continue; }
+			delete first.ptr;
+			return key;
+		}
+	};
+
+	virtual void Clear() {
+		PSNODE *temp;
+		while (nullptr != head.ptr)
+		{
+			temp->ptr = head.ptr;
+			head.ptr = temp->ptr->next;
+			delete temp->ptr;
+		}
+		NODE * new_node = new NODE;
+		head = PSNODE(new_node);
+		tail = PSNODE(new_node);
+	};
+
+	virtual void Print20() {
+		NODE *ptr = head.ptr;
+		for (int i = 0; i < 20; ++i) {
+			if (tail.ptr == ptr) { break; }
+			cout << ptr->key << " ";
+			ptr = ptr->next;
+		}
+		cout << "\n\n";
+	};
+
+	virtual void myTypePrint() { printf(" %s == 비멈춤 스탬프 동기화\n\n", typeid(*this).name()); };
+};
+
 
 int main() {
 	setlocale(LC_ALL, "korean");
 	vector<Virtual_Class *> List_Classes;
 
-	List_Classes.emplace_back(new CorseGrain_QUEUE());
-	List_Classes.emplace_back(new Nonblocking_Queue());
+	//List_Classes.emplace_back(new CorseGrain_QUEUE());
+	//List_Classes.emplace_back(new Nonblocking_Queue());
+	List_Classes.emplace_back(new Lock_free_stamp_Queue());
 
 	vector<thread *> worker_thread;
 	Time_Check t;
