@@ -233,9 +233,11 @@ public:
 	}
 
 	lockFreeStampNode() { ptr = nullptr; stamp = 0; }
-	~lockFreeStampNode() { if (nullptr != ptr) delete ptr; }
+	~lockFreeStampNode() { /*if (nullptr != ptr) delete ptr;*/ }
 
-
+	void operator=(NODE* other) {
+		ptr = other;
+	}
 };
 
 bool CAS(PSNODE *addr, PSNODE * old_v, NODE * next) {
@@ -256,8 +258,8 @@ class Lock_free_stamp_Queue : public Virtual_Class
 public:
 	Lock_free_stamp_Queue() {
 		NODE * new_node = new NODE;
-		head = PSNODE(new_node);
-		tail = PSNODE(new_node);
+		head = new_node;
+		tail = new_node;
 	}
 	~Lock_free_stamp_Queue() {
 		Clear();
@@ -308,7 +310,7 @@ private:
 		PSNODE *temp;
 		while (nullptr != head.ptr)
 		{
-			temp->ptr = head.ptr;
+			temp = &head;
 			head.ptr = temp->ptr->next;
 			delete temp->ptr;
 		}
