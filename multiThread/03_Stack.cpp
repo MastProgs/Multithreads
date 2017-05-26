@@ -107,6 +107,11 @@ private:
 	virtual void myTypePrint() { printf(" %s == 성긴 동기화\n\n", typeid(*this).name()); };
 };
 
+// 스왑시 CAS 이렇게 해야됨
+// NODE *e = new NODE { key };
+// NODE *ptr = top;
+// e -> next = ptr;
+// while ( false == CAS ( &top, ptr, e ) );
 
 class Lock_Free_STACK : public Virtual_Class
 {
