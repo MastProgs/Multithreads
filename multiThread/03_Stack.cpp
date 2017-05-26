@@ -113,6 +113,27 @@ private:
 // e -> next = ptr;
 // while ( false == CAS ( &top, ptr, e ) );
 
+/*
+
+ do{
+
+
+ } while (
+
+
+
+ *** pop
+
+ do{
+	if(nullptr == top) { return0; }
+	ptr = top;
+	next = ptr->next;
+	int res = ptr->key;
+ } while ( false == CAS(&top, ptr, next));
+
+ return res;
+*/
+
 class Lock_Free_STACK : public Virtual_Class
 {
 	NODE *top;
