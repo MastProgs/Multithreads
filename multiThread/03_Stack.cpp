@@ -45,6 +45,12 @@ public:
 	~NODE() {};
 };
 
+bool CAS(NODE * volatile * wantToChange, NODE * currValue, NODE * wantResultValue) {
+	int oldValue = reinterpret_cast<int>(currValue);
+	int newValue = reinterpret_cast<int>(wantResultValue);
+	return atomic_compare_exchange_strong(reinterpret_cast<atomic_int volatile *>(wantToChange), &oldValue, newValue);
+}
+
 class CorseGrain_STACK : public Virtual_Class
 {
 	NODE *top;
@@ -119,9 +125,6 @@ private:
 
 
  } while (
-
-
-
  *** pop
 
  do{
@@ -149,20 +152,26 @@ public:
 private:
 	virtual void Push(int key) {
 		NODE *e = new NODE{ key };
-		if (nullptr != top) { e->next = top; }
-		top = e;
+		NODE *ptr;
+		do {
+			ptr = top;
+			e->next = ptr;
+		} while (false == CAS(&top, ptr, e));
 	};
 
 	virtual int Pop() {
-		NODE *temp = nullptr;
 		int key = 0;
-		if (nullptr == top) {
-			return key;
-		}
-		key = top->key;
-		temp = top;
-		top = top->next;
-		delete temp;
+		if (nullptr == top) { return key; }
+
+		NODE *ptr = nullptr;
+		NODE *next = nullptr;
+		do
+		{
+			ptr = top;
+			next = ptr->next;
+			key = ptr->key;
+		} while (false == CAS(&top, ptr, next));
+		// delete ptr;	// ABA 문제 발생
 		return key;
 	};
 
@@ -187,7 +196,97 @@ private:
 		cout << "\n\n";
 	};
 
-	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화\n\n", typeid(*this).name()); };
+	virtual void myTypePrint() { printf(" %s == 비멈춤 동기화 ( ABA 문제 발생으로 delete 안함 )\n\n", typeid(*this).name()); };
+};
+
+class BackOff {
+private:
+	int mindelay, maxdelay;
+	int limit;
+public:
+	BackOff(int min, int max) {
+		limit = mindelay = min;
+		maxdelay = max;
+	}
+	~BackOff() {}
+
+	void do_backoff() {
+		int delay = rand() % limit;
+		if (0 == delay) { return; }
+		limit += limit;
+		if (limit > maxdelay) limit = maxdelay;
+		int now, curr;
+
+		// VS 2015 부터 됨 ( 그 전엔 ns 단위를 제대로 지원 안했음 )
+		auto start = high_resolution_clock::now();
+		auto du = high_resolution_clock::now() - start;
+		while (duration_cast<nanoseconds>(du).count() < delay)
+		{
+			auto du = high_resolution_clock::now() - start;
+		}
+	}
+};
+
+class Lock_Free_BackOff_STACK : public Virtual_Class
+{
+	NODE *top;
+public:
+
+	Lock_Free_BackOff_STACK() {
+		top = nullptr;
+	};
+	~Lock_Free_BackOff_STACK() {
+		Clear();
+	};
+
+private:
+	virtual void Push(int key) {
+		NODE *e = new NODE{ key };
+		NODE *ptr;
+		do {
+			ptr = top;
+			e->next = ptr;
+		} while (false == CAS(&top, ptr, e));
+	};
+
+	virtual int Pop() {
+		int key = 0;
+		if (nullptr == top) { return key; }
+
+		NODE *ptr = nullptr;
+		NODE *next = nullptr;
+		do
+		{
+			ptr = top;
+			next = ptr->next;
+			key = ptr->key;
+		} while (false == CAS(&top, ptr, next));
+		// delete ptr;	// ABA 문제 발생
+		return key;
+	};
+
+	virtual void Clear() {
+		NODE *temp;
+		while (nullptr != top)
+		{
+			temp = top;
+			top = top->next;
+			delete temp;
+		}
+		top = nullptr;
+	};
+
+	virtual void Print20() {
+		NODE *ptr = top;
+		for (int i = 0; i < 20; ++i) {
+			if (nullptr == ptr) { break; }
+			cout << ptr->key << " ";
+			ptr = ptr->next;
+		}
+		cout << "\n\n";
+	};
+
+	virtual void myTypePrint() { printf(" %s == 비멈춤 BackOff 동기화 ( ABA 문제 발생으로 delete 안함 )\n\n", typeid(*this).name()); };
 };
 
 int main() {
@@ -195,7 +294,8 @@ int main() {
 	vector<Virtual_Class *> List_Classes;
 
 	//List_Classes.emplace_back(new CorseGrain_STACK());
-	List_Classes.emplace_back(new Lock_Free_STACK());
+	//List_Classes.emplace_back(new Lock_Free_STACK());
+	List_Classes.emplace_back(new Lock_Free_BackOff_STACK());
 
 	vector<thread *> worker_thread;
 	Time_Check t;
