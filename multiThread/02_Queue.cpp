@@ -337,8 +337,8 @@ int main() {
 	setlocale(LC_ALL, "korean");
 	vector<Virtual_Class *> List_Classes;
 
-	//List_Classes.emplace_back(new CorseGrain_QUEUE());
-	//List_Classes.emplace_back(new Nonblocking_Queue());
+	List_Classes.emplace_back(new CorseGrain_QUEUE());
+	List_Classes.emplace_back(new Nonblocking_Queue());
 	List_Classes.emplace_back(new Lock_free_stamp_Queue());
 
 	vector<thread *> worker_thread;

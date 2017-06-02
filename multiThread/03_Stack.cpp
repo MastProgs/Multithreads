@@ -390,13 +390,14 @@ public:
 			}
 			case S_BUSY: {
 				// 신나게 이미 바꾸고 있는 중이므로...
-				continue;
+				//continue;	// 이거 continue 면 BUSY 일때 무한루프가 되기에, return 하고 종료해야할듯
+				return value;
 				break;
 			}
 			default: cout << "Exchanger INVALID STATE!!\n\n"; break;
 			}
 		}
-		return value;
+		//return value;
 	}
 
 	Exchanger() { sv.state = S_EMPTY; };
@@ -464,7 +465,7 @@ private:
 				// range 증가 시도
 				if (0 == (rand() % MAX_CAP)) {
 					int old_range = range;
-					if (MAX_CAP - 1 > range) { CAS(&range, old_range, old_range + 1); }
+					if (MAX_CAP - 1 > old_range) { CAS(&range, old_range, old_range + 1); }
 					if (res == 0) {
 						// 결과가 0 이면 교환이 성공적, top 에게 넘겨준것
 						break;
@@ -548,7 +549,7 @@ int main() {
 
 	//List_Classes.emplace_back(new CorseGrain_STACK());
 	//List_Classes.emplace_back(new Lock_Free_STACK());
-	List_Classes.emplace_back(new Lock_Free_BackOff_STACK());
+	//List_Classes.emplace_back(new Lock_Free_BackOff_STACK());
 	List_Classes.emplace_back(new Lock_Free_eliminate_STACK());
 
 	vector<thread *> worker_thread;
