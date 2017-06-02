@@ -222,7 +222,7 @@ public:
 		auto du = high_resolution_clock::now() - start;
 		while (duration_cast<nanoseconds>(du).count() < delay)
 		{
-			auto du = high_resolution_clock::now() - start;
+			du = high_resolution_clock::now() - start;
 		}
 	}
 };
