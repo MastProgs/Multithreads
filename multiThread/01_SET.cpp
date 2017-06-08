@@ -29,16 +29,17 @@ public:
 	void Unlock() { m_L.unlock(); }
 };
 
+template <typename T>
 class Free_list {
 public:
 	mutex fl_lock;
-	NODE head;
+	T head;
 
 	Free_list() {
 		head.next = nullptr;
 	}
 	~Free_list() {
-		NODE *p = head.next;
+		T *p = head.next;
 		while (nullptr != p)
 		{
 			head.next = p->next;
@@ -47,12 +48,12 @@ public:
 		}
 	}
 
-	NODE *GetNode(int x) {
+	T *GetNode(int x) {
 		fl_lock.lock();
 
 		if (nullptr == head.next) {
 			fl_lock.unlock();
-			return new NODE;
+			return new T;
 		}
 		else {
 			auto p = head.next;
@@ -65,15 +66,13 @@ public:
 		}
 	}
 
-	void DeleteNode(NODE *p) {
+	void DeleteNode(T *p) {
 		fl_lock.lock();
 		p->next = head.next;
 		head.next = p;
 		fl_lock.unlock();
 	}
 };
-
-Free_list free_list;
 
 class Virtual_Class {
 public:
@@ -334,6 +333,8 @@ class Optimistic_synchronization_LIST : public Virtual_Class {
 	/********* 문제는 메모리 누수가 있다는 점 *********/
 
 	NODE head, tail;
+
+	Free_list<NODE> free_list;
 public:
 	Optimistic_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
 	~Optimistic_synchronization_LIST() { Clear(); }
@@ -485,6 +486,7 @@ class Lazy_synchronization_List : public Virtual_Class {
 	// free-list 를 만들지 않아서, 역시나 누수
 
 	NODE head, tail;
+	Free_list<NODE> free_list;
 public:
 	Lazy_synchronization_List() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
 	~Lazy_synchronization_List() { Clear(); }
