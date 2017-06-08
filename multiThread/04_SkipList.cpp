@@ -102,12 +102,12 @@ public:
 		m_lock.lock();
 		Find(x, prev, curr);
 
-		if (x != curr->key) {
+		if (x != curr[0]->key) {
 			m_lock.unlock();
 			return false;
 		}
 		else {
-			prev->next = curr->next;
+			//prev->next = curr->next;
 			delete curr;
 			m_lock.unlock();
 			return true;
@@ -120,7 +120,7 @@ public:
 		m_lock.lock();
 		Find(x, prev, curr);
 
-		if (x != curr->key) {
+		if (x != curr[0]->key) {
 			m_lock.unlock();
 			return false;
 		}
