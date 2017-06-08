@@ -24,6 +24,9 @@
     <ClCompile Include="03_Stack.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="04_SkipList.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TimeCheck.h">
