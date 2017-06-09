@@ -65,6 +65,7 @@ public:
 class Coarse_grained_Skip_LIST : public Virtual_Class {
 	NODE head, tail;
 	mutex m_lock;
+	typedef NODE* NODEPTR[MAX_HEIGHT];
 public:
 	Coarse_grained_Skip_LIST() {
 		head.key = 0x80000000;
@@ -77,10 +78,10 @@ public:
 	virtual void myTypePrint() { printf(" %s == 성긴 SkipList\n\n", typeid(*this).name()); }
 
 	virtual bool Add(int x) {
-		NODE *prev[MAX_HEIGHT], *curr[MAX_HEIGHT];
+		NODEPTR prev, curr;
 
 		m_lock.lock();
-		Find(x, prev, curr);
+		Find(x, &prev, &curr);
 
 		if (x == curr[0]->key) {
 			m_lock.unlock();
@@ -89,8 +90,10 @@ public:
 		else {
 			int height = rand() % MAX_HEIGHT; // 높이에 따른 갯 수 조절이 필요
 			NODE *node = new NODE{ x, height };
-			//node->next = curr;	// 수정해야됨
-			//prev->next = node;
+			for (int i = 0; i <= height; ++i) {
+				node->next[i] = curr[i];
+				prev[i]->next[i] = node;
+			}
 			m_lock.unlock();
 			return true;
 		}
@@ -100,15 +103,18 @@ public:
 		NODE *prev[MAX_HEIGHT], *curr[MAX_HEIGHT];
 
 		m_lock.lock();
-		Find(x, prev, curr);
+		Find(x, &prev, &curr);
 
 		if (x != curr[0]->key) {
 			m_lock.unlock();
 			return false;
 		}
 		else {
-			//prev->next = curr->next;
-			delete curr;
+			int hi_index = curr[0]->toplevel;
+			for (int i = 0; i <= hi_index; ++i) {
+				prev[i]->next[i] = curr[0]->next[i];
+			}
+			delete curr[0];
 			m_lock.unlock();
 			return true;
 		}
@@ -118,7 +124,7 @@ public:
 		NODE *prev[MAX_HEIGHT], *curr[MAX_HEIGHT];
 
 		m_lock.lock();
-		Find(x, prev, curr);
+		Find(x, &prev, &curr);
 
 		if (x != curr[0]->key) {
 			m_lock.unlock();
@@ -151,295 +157,22 @@ public:
 		cout << "\n\n";
 	}
 private:
-
-	void Find(int key, NODE *prev[], NODE *curr[]) {
-		prev[MAX_HEIGHT - 1] = &head;
-		curr[MAX_HEIGHT - 1] = head.next[MAX_HEIGHT];
+	void Find(int key, NODEPTR *prev, NODEPTR *curr) {
+		(*prev)[MAX_HEIGHT - 1] = &head;
+		(*curr)[MAX_HEIGHT - 1] = head.next[MAX_HEIGHT - 1];
 		for (int level = MAX_HEIGHT - 1; level >= 0; --level) {
-			while (curr[level]->key < key)
+			while ((*curr)[level]->key < key)	// 난 왜 여기서 무한루프지?
 			{
-				prev[level] = curr[level];
-				curr[level] = curr[level]->next[level];
+				(*prev)[level] = (*curr)[level];
+				(*curr)[level] = (*curr)[level]->next[level];
 			}
 			if (0 == level) break;
-			prev[level - 1] = prev[level];
-			curr[level - 1] = prev[level - 1]->next[level - 1];
+			(*prev)[level - 1] = (*prev)[level];
+			(*curr)[level - 1] = (*prev)[level - 1]->next[level - 1];
 		}
 	}
 };
-//
-//class Fine_grained_synchronization_LIST : public Virtual_Class {
-//	NODE head, tail;
-//public:
-//	Fine_grained_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
-//	~Fine_grained_synchronization_LIST() {
-//		// head.m_L.try_lock.lock();
-//
-//		Clear();
-//	}
-//
-//	virtual void myTypePrint() { printf(" %s == 세밀한 동기화\n\n", typeid(*this).name()); }
-//
-//	virtual bool Add(int x) {
-//		NODE *prev, *curr;
-//
-//		prev = Search_key(x);
-//		curr = prev->next;
-//
-//		if (x == curr->key) {
-//			prev->Unlock();
-//			curr->Unlock();
-//			return false;
-//		}
-//		else {
-//			NODE *node = new NODE{ x };
-//			node->next = curr;
-//			prev->next = node;
-//			prev->Unlock();
-//			curr->Unlock();
-//			return true;
-//		}
-//	};
-//
-//	virtual bool Remove(int x) {
-//		NODE *prev, *curr;
-//
-//		prev = Search_key(x);
-//		curr = prev->next;
-//		if (x != curr->key) {
-//			prev->Unlock();
-//			curr->Unlock();
-//			return false;
-//		}
-//		else {
-//			prev->next = curr->next;
-//			curr->Unlock();
-//			delete curr;
-//			prev->Unlock();
-//			return true;
-//		}
-//	};
-//
-//	// 해당 key 값이 있습니까?
-//	virtual bool Contains(int x) {
-//		NODE *prev, *curr;
-//
-//		prev = Search_key(x);
-//		curr = prev->next;
-//
-//		if (x != curr->key) {
-//			prev->Unlock();
-//			curr->Unlock();
-//			return false;
-//		}
-//		else {
-//			prev->Unlock();
-//			curr->Unlock();
-//			return true;
-//		}
-//	};
-//
-//	// 내부 노드 전부 해제
-//	virtual void Clear() {
-//		NODE *ptr;
-//		while (head.next != &tail)
-//		{
-//			ptr = head.next;
-//			head.next = ptr->next;
-//			delete ptr;
-//		}
-//	}
-//
-//	// 값이 제대로 들어갔나 확인하기 위한 기본 앞쪽 20개 체크
-//	virtual void Print20() {
-//		NODE *ptr = head.next;
-//		for (int i = 0; i < 20; ++i) {
-//			if (&tail == ptr) { break; }
-//			cout << ptr->key << " ";
-//			ptr = ptr->next;
-//		}
-//		cout << "\n\n";
-//	}
-//private:
-//	NODE* Search_key(int key) {
-//		NODE *prev, *curr;
-//
-//		head.Lock();
-//		prev = &head;
-//
-//		head.next->Lock();
-//		curr = head.next;
-//
-//		while (curr->key < key) {
-//
-//			prev->Unlock();
-//			prev = curr;
-//
-//			curr->next->Lock();
-//			curr = curr->next;
-//		}
-//		return prev;
-//	}
-//};
-//
-//class Optimistic_synchronization_LIST : public Virtual_Class {
-//	// 검색시 락은 오버헤드가 너무 크니, 일단 검색후 락. 제대로 했는지 확인후
-//	// 잘못되었으면, 처음부터 다시 -> 낙천적 동기화의 개념 (시도한 위치가 제대로 잡힐 때 까지)
-//	// 고민1. 이동중에 갑자기 누가 삭제해버리면 어떻게 될것인가? delete 된 노드를 가르킨다? ㅁㅊ
-//	// 제대로 된 포인터라는 보장이 없기 때문에 잘 처리해줘야 한다.
-//	// 그렇기 때문에, 빼긴 하는데 DELETE 를 하지 않고, 다른 곳에 빼둔다. ( 포인터는 그대로니 안정성 )
-//
-//	// 만약 실패해서, 두번째 왔을때 다시 올 수 있는지 확인 한다.
-//	// 첫번째 검색은 아무런 락 없이 검색하지만, 다음은 현재 위치 락을 걸어 놓고 다시 검사함
-//
-//	/********* 문제는 메모리 누수가 있다는 점 *********/
-//
-//	NODE head, tail;
-//public:
-//	Optimistic_synchronization_LIST() { head.key = 0x80000000; head.next = &tail; tail.key = 0x7fffffff; tail.next = nullptr; }
-//	~Optimistic_synchronization_LIST() { Clear(); }
-//
-//	virtual void myTypePrint() { printf(" %s == 낙천적 동기화, 메모리를 해제하지 않으므로 누수가 된다.\n\n", typeid(*this).name()); }
-//
-//	virtual bool Add(int x) {
-//		NODE *prev, *curr;
-//
-//		while (true)
-//		{
-//			prev = Search_key(x);
-//			curr = prev->next;
-//
-//			prev->Lock();
-//			curr->Lock();
-//
-//			if (false == validate(prev, curr)) {
-//				curr->Unlock();
-//				prev->Unlock();
-//				continue;
-//			}
-//
-//			if (x == curr->key) {
-//				curr->Unlock();
-//				prev->Unlock();
-//				return false;
-//			}
-//			else {
-//				NODE *node = new NODE{ x };
-//				node->next = curr;
-//				prev->next = node;
-//				curr->Unlock();
-//				prev->Unlock();
-//				return true;
-//			}
-//		}
-//	};
-//
-//	virtual bool Remove(int x) {
-//		NODE *prev, *curr;
-//
-//		while (true)
-//		{
-//			prev = Search_key(x);
-//			curr = prev->next;
-//
-//			prev->Lock();
-//			curr->Lock();
-//
-//			if (false == validate(prev, curr)) {
-//				prev->Unlock();
-//				curr->Unlock();
-//				continue;;
-//			}
-//
-//			if (x != curr->key) {
-//				curr->Unlock();
-//				prev->Unlock();
-//				return false;
-//			}
-//			else {
-//
-//				NODE *p = free_list.GetNode(curr->key);
-//
-//				prev->next = curr->next;
-//				//free_list.insert(curr);
-//				curr->Unlock();
-//				prev->Unlock();
-//				return true;
-//			}
-//		}
-//	};
-//
-//	// 해당 key 값이 있습니까?
-//	virtual bool Contains(int x) {
-//		NODE *prev, *curr;
-//
-//		while (true)
-//		{
-//			prev = Search_key(x);
-//			curr = prev->next;
-//
-//			prev->Lock();
-//			curr->Lock();
-//
-//			if (false == validate(prev, curr)) {
-//				curr->Unlock();
-//				prev->Unlock();
-//				continue;
-//			}
-//
-//			if (x != curr->key) {
-//				prev->Unlock();
-//				curr->Unlock();
-//				return false;
-//			}
-//			else {
-//				prev->Unlock();
-//				curr->Unlock();
-//				return true;
-//			}
-//		}
-//	};
-//
-//	// 내부 노드 전부 해제
-//	virtual void Clear() {
-//		NODE *ptr;
-//		while (head.next != &tail)
-//		{
-//			ptr = head.next;
-//			head.next = ptr->next;
-//			delete ptr;
-//		}
-//
-//		//free_list.Clear();
-//	}
-//
-//	// 값이 제대로 들어갔나 확인하기 위한 기본 앞쪽 20개 체크
-//	virtual void Print20() {
-//		NODE *ptr = head.next;
-//		for (int i = 0; i < 20; ++i) {
-//			if (&tail == ptr) { break; }
-//			cout << ptr->key << " ";
-//			ptr = ptr->next;
-//		}
-//		cout << "\n\n";
-//	}
-//private:
-//	NODE* Search_key(int key) {
-//		NODE *prev, *curr;
-//
-//		prev = &head;
-//		curr = head.next;
-//
-//		while (curr->key < key) {
-//			prev = curr;
-//			curr = curr->next;
-//		}
-//		return prev;
-//	}
-//
-//	bool validate(NODE *prev, NODE *curr) { return (Search_key(curr->key)->next == curr); }
-//};
-//
+
 //class Lazy_synchronization_List : public Virtual_Class {
 //	// 낙천적 동기화와 동일 -> marked 를 사용하여 삭제 진행중인 것을 구분
 //
